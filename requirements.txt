@@ -6,4 +6,5 @@ flask_mail
 eventlet
 opencv-python
 scikit-image
+gunicorn
 werkzeug
