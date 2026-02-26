@@ -1,0 +1,9 @@
+flask
+flask_sqlalchemy
+flask_cors
+flask_socketio
+flask_mail
+eventlet
+opencv-python
+scikit-image
+werkzeug
