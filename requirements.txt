@@ -7,3 +7,4 @@ opencv-python-headless
 scikit-image
 gunicorn
 eventlet
+sendgrid
