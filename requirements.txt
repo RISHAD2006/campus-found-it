@@ -1,10 +1,8 @@
-flask
-flask_sqlalchemy
-flask_cors
-flask_socketio
-flask_mail
+Flask
+Flask-SQLAlchemy
+Flask-Cors
+Flask-SocketIO
+Flask-Mail
 opencv-python-headless
 scikit-image
 gunicorn
-eventlet
-sendgrid
