@@ -2,17 +2,18 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_socketio import SocketIO
+from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from skimage.metrics import structural_similarity as ssim
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 import cv2
 import os
 import uuid
 
 app = Flask(__name__)
 CORS(app)
+
+# ✅ REMOVE eventlet (IMPORTANT FOR RENDER)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # ================= DATABASE =================
@@ -21,8 +22,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     "sqlite:///campus.db"
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
+
+# ================= MAIL CONFIG (SENDGRID SMTP) =================
+app.config['MAIL_SERVER'] = 'smtp.sendgrid.net'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'apikey'
+app.config['MAIL_PASSWORD'] = os.environ.get("SENDGRID_API_KEY")
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get("MAIL_DEFAULT_SENDER")
+
+mail = Mail(app)
 
 # ================= UPLOAD =================
 UPLOAD_FOLDER = "uploads"
@@ -48,7 +58,6 @@ class Item(db.Model):
     image_filename = db.Column(db.String(300))
     matched = db.Column(db.Boolean, default=False)
 
-
 # ================= IMAGE SIMILARITY =================
 def calculate_image_similarity(img1_path, img2_path):
     img1 = cv2.imread(img1_path)
@@ -66,12 +75,10 @@ def calculate_image_similarity(img1_path, img2_path):
     score, _ = ssim(gray1, gray2, full=True)
     return score
 
-
 # ================= HOME =================
 @app.route("/")
 def home():
     return "AI Matching System Running 🚀"
-
 
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
@@ -92,7 +99,6 @@ def register():
 
     return jsonify({"message": "Registered successfully"})
 
-
 # ================= LOGIN =================
 @app.route("/login", methods=["POST"])
 def login():
@@ -112,8 +118,7 @@ def login():
         "email": user.email
     })
 
-
-# ================= UPLOAD + MATCH =================
+# ================= UPLOAD + MATCH + EMAIL =================
 @app.route("/upload", methods=["POST"])
 def upload_item():
     title = request.form.get("title")
@@ -155,50 +160,36 @@ def upload_item():
             item.matched = True
             db.session.commit()
 
-            # ===== GET USERS =====
-            user1 = User.query.get(user_id)
-            user2 = User.query.get(item.user_id)
+            user1 = db.session.get(User, user_id)
+            user2 = db.session.get(User, item.user_id)
 
-            # ===== SEND EMAIL USING SENDGRID API =====
             try:
-                sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
-
-                message1 = Mail(
-                    from_email=os.environ.get("MAIL_DEFAULT_SENDER"),
-                    to_emails=user1.email,
-                    subject="🔥 Your Item Has Been Matched!",
-                    html_content=f"""
-                    <strong>Good news!</strong><br><br>
-                    Your item '{new_item.title}' has been matched.<br><br>
-                    Contact the other user at: {user2.email}<br><br>
-                    Campus Found-It AI
-                    """
+                msg1 = Message(
+                    subject="🔥 Lost Item Matched!",
+                    recipients=[user1.email]
                 )
+                msg1.body = f"""
+Your item '{new_item.title}' has been matched.
 
-                message2 = Mail(
-                    from_email=os.environ.get("MAIL_DEFAULT_SENDER"),
-                    to_emails=user2.email,
-                    subject="🔥 Your Item Has Been Matched!",
-                    html_content=f"""
-                    <strong>Good news!</strong><br><br>
-                    Your item '{item.title}' has been matched.<br><br>
-                    Contact the other user at: {user1.email}<br><br>
-                    Campus Found-It AI
-                    """
+Contact: {user2.email}
+"""
+                mail.send(msg1)
+
+                msg2 = Message(
+                    subject="🔥 Found Item Matched!",
+                    recipients=[user2.email]
                 )
+                msg2.body = f"""
+Your item '{item.title}' has been matched.
 
-                sg.send(message1)
-                sg.send(message2)
+Contact: {user1.email}
+"""
+                mail.send(msg2)
 
-                print("✅ Emails sent successfully!")
+                print("✅ Emails sent successfully")
 
             except Exception as e:
                 print("❌ Email Error:", e)
-
-            socketio.emit("match_found", {
-                "user1": user_id,
-                "user2": item.user_id
-            })
 
             return jsonify({
                 "message": "🔥 MATCH FOUND!",
@@ -206,45 +197,6 @@ def upload_item():
             })
 
     return jsonify({"message": "Item uploaded successfully"})
-
-
-# ================= MY ITEMS =================
-@app.route("/my-items/<int:user_id>")
-def my_items(user_id):
-    items = Item.query.filter_by(user_id=user_id).all()
-
-    result = []
-    for item in items:
-        result.append({
-            "id": item.id,
-            "title": item.title,
-            "description": item.description,
-            "status": item.status,
-            "matched": item.matched,
-            "image_url": request.host_url + "uploads/" + item.image_filename
-        })
-
-    return jsonify(result)
-
-
-# ================= DELETE =================
-@app.route("/delete/<int:item_id>", methods=["DELETE"])
-def delete_item(item_id):
-    item = db.session.get(Item, item_id)
-    if not item:
-        return jsonify({"error": "Item not found"}), 404
-
-    db.session.delete(item)
-    db.session.commit()
-
-    return jsonify({"message": "Deleted successfully"})
-
-
-# ================= SERVE IMAGE =================
-@app.route("/uploads/<filename>")
-def uploaded_file(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
-
 
 # ================= START =================
 with app.app_context():
