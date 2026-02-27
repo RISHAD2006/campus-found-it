@@ -1,8 +1,11 @@
 Flask==3.0.3
 Flask-SQLAlchemy==3.1.1
 Flask-Cors==4.0.0
+Flask-SocketIO==5.3.6
 Flask-Mail==0.9.1
 gunicorn==21.2.0
+gevent==24.2.1
+gevent-websocket==0.10.1
 opencv-python-headless==4.9.0.80
 scikit-image==0.22.0
 psycopg2-binary==2.9.9
