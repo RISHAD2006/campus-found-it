@@ -10,16 +10,16 @@ import cv2
 import os
 import uuid
 
-app = Flask(__name__)
+# 🔥 IMPORTANT: Serve static folder
+app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
 
-# ✅ IMPORTANT: No eventlet (Railway crash prevent)
+# ✅ No eventlet
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ================= DATABASE =================
 database_url = os.environ.get("DATABASE_URL")
 
-# Fix Supabase postgres:// issue
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
@@ -28,7 +28,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# ================= MAIL CONFIG =================
+# ================= MAIL =================
 app.config['MAIL_SERVER'] = 'smtp.sendgrid.net'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
@@ -51,7 +51,6 @@ class User(db.Model):
     name = db.Column(db.String(100))
     email = db.Column(db.String(120), unique=True)
     password = db.Column(db.String(200))
-
 
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -79,25 +78,25 @@ def calculate_image_similarity(img1_path, img2_path):
     score, _ = ssim(gray1, gray2, full=True)
     return score
 
-# ================= HOME =================
+# ================= FRONTEND ROUTES =================
+
 @app.route("/")
-def home():
-    return send_from_directory(".", "index.html")
+def serve_index():
+    return app.send_static_file("index.html")
 
-# ================= FRONTEND PAGES =================
-@app.route("/login")
-def login_page():
-    return send_from_directory(".", "login.html")
+@app.route("/login.html")
+def serve_login():
+    return app.send_static_file("login.html")
 
-@app.route("/register")
-def register_page():
-    return send_from_directory(".", "register.html")
+@app.route("/register.html")
+def serve_register():
+    return app.send_static_file("register.html")
 
-@app.route("/dashboard")
-def dashboard_page():
-    return send_from_directory(".", "dashboard.html")
+@app.route("/dashboard.html")
+def serve_dashboard():
+    return app.send_static_file("dashboard.html")
 
-# ================= REGISTER =================
+# ================= REGISTER API =================
 @app.route("/register", methods=["POST"])
 def register():
     data = request.get_json()
@@ -116,7 +115,7 @@ def register():
 
     return jsonify({"message": "Registered successfully"})
 
-# ================= LOGIN =================
+# ================= LOGIN API =================
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
@@ -135,11 +134,12 @@ def login():
         "email": user.email
     })
 
-# ================= GET ALL ITEMS =================
-@app.route("/items")
-def get_all_items():
-    items = Item.query.all()
+# ================= MY ITEMS =================
+@app.route("/my-items/<int:user_id>")
+def my_items(user_id):
+    items = Item.query.filter_by(user_id=user_id).all()
     result = []
+
     for item in items:
         result.append({
             "id": item.id,
@@ -149,9 +149,10 @@ def get_all_items():
             "matched": item.matched,
             "image_url": request.host_url + "uploads/" + item.image_filename
         })
+
     return jsonify(result)
 
-# ================= UPLOAD + AI MATCH =================
+# ================= UPLOAD =================
 @app.route("/upload", methods=["POST"])
 def upload_item():
     title = request.form.get("title")
@@ -193,25 +194,10 @@ def upload_item():
             item.matched = True
             db.session.commit()
 
-            user1 = db.session.get(User, user_id)
-            user2 = db.session.get(User, item.user_id)
-
             socketio.emit("match_found", {
-                "user1": user1.id,
-                "user2": user2.id
+                "user1": user_id,
+                "user2": item.user_id
             })
-
-            try:
-                msg1 = Message("🔥 Lost Item Matched!", recipients=[user1.email])
-                msg1.body = f"Your item '{new_item.title}' matched. Contact: {user2.email}"
-                mail.send(msg1)
-
-                msg2 = Message("🔥 Found Item Matched!", recipients=[user2.email])
-                msg2.body = f"Your item '{item.title}' matched. Contact: {user1.email}"
-                mail.send(msg2)
-
-            except Exception as e:
-                print("Email Error:", e)
 
             return jsonify({
                 "message": "🔥 MATCH FOUND!",
@@ -220,23 +206,7 @@ def upload_item():
 
     return jsonify({"message": "Item uploaded successfully"})
 
-# ================= MY ITEMS =================
-@app.route("/my-items/<int:user_id>")
-def my_items(user_id):
-    items = Item.query.filter_by(user_id=user_id).all()
-    result = []
-    for item in items:
-        result.append({
-            "id": item.id,
-            "title": item.title,
-            "description": item.description,
-            "status": item.status,
-            "matched": item.matched,
-            "image_url": request.host_url + "uploads/" + item.image_filename
-        })
-    return jsonify(result)
-
-# ================= DELETE ITEM =================
+# ================= DELETE =================
 @app.route("/delete/<int:item_id>", methods=["DELETE"])
 def delete_item(item_id):
     item = db.session.get(Item, item_id)
@@ -246,19 +216,6 @@ def delete_item(item_id):
     db.session.delete(item)
     db.session.commit()
     return jsonify({"message": "Deleted successfully"})
-
-# ================= DELETE ACCOUNT =================
-@app.route("/delete-account/<int:user_id>", methods=["DELETE"])
-def delete_account(user_id):
-    user = db.session.get(User, user_id)
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    Item.query.filter_by(user_id=user_id).delete()
-    db.session.delete(user)
-    db.session.commit()
-
-    return jsonify({"message": "Account deleted successfully"})
 
 # ================= SERVE IMAGE =================
 @app.route("/uploads/<filename>")
@@ -272,4 +229,3 @@ with app.app_context():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host="0.0.0.0", port=port)
-
