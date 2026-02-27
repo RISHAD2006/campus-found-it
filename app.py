@@ -84,6 +84,19 @@ def calculate_image_similarity(img1_path, img2_path):
 def home():
     return send_from_directory(".", "index.html")
 
+# ================= FRONTEND PAGES =================
+@app.route("/login")
+def login_page():
+    return send_from_directory(".", "login.html")
+
+@app.route("/register")
+def register_page():
+    return send_from_directory(".", "register.html")
+
+@app.route("/dashboard")
+def dashboard_page():
+    return send_from_directory(".", "dashboard.html")
+
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
 def register():
