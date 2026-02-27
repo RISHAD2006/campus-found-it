@@ -1,6 +1,7 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_socketio import SocketIO
 from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,9 +13,19 @@ import uuid
 app = Flask(__name__)
 CORS(app)
 
+# ✅ IMPORTANT: No eventlet (Railway crash prevent)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
 # ================= DATABASE =================
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
+database_url = os.environ.get("DATABASE_URL")
+
+# Fix Supabase postgres:// issue
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url or "sqlite:///campus.db"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
 # ================= MAIL CONFIG =================
@@ -29,15 +40,18 @@ mail = Mail(app)
 
 # ================= UPLOAD =================
 UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 # ================= MODELS =================
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100))
-    email = db.Column(db.String(100), unique=True)
+    email = db.Column(db.String(120), unique=True)
     password = db.Column(db.String(200))
+
 
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -65,6 +79,7 @@ def calculate_image_similarity(img1_path, img2_path):
     score, _ = ssim(gray1, gray2, full=True)
     return score
 
+# ================= HOME =================
 @app.route("/")
 def home():
     return "AI Matching System Running 🚀"
@@ -107,7 +122,23 @@ def login():
         "email": user.email
     })
 
-# ================= UPLOAD + MATCH =================
+# ================= GET ALL ITEMS =================
+@app.route("/items")
+def get_all_items():
+    items = Item.query.all()
+    result = []
+    for item in items:
+        result.append({
+            "id": item.id,
+            "title": item.title,
+            "description": item.description,
+            "status": item.status,
+            "matched": item.matched,
+            "image_url": request.host_url + "uploads/" + item.image_filename
+        })
+    return jsonify(result)
+
+# ================= UPLOAD + AI MATCH =================
 @app.route("/upload", methods=["POST"])
 def upload_item():
     title = request.form.get("title")
@@ -149,9 +180,82 @@ def upload_item():
             item.matched = True
             db.session.commit()
 
+            user1 = db.session.get(User, user_id)
+            user2 = db.session.get(User, item.user_id)
+
+            socketio.emit("match_found", {
+                "user1": user1.id,
+                "user2": user2.id
+            })
+
+            try:
+                msg1 = Message("🔥 Lost Item Matched!", recipients=[user1.email])
+                msg1.body = f"Your item '{new_item.title}' matched. Contact: {user2.email}"
+                mail.send(msg1)
+
+                msg2 = Message("🔥 Found Item Matched!", recipients=[user2.email])
+                msg2.body = f"Your item '{item.title}' matched. Contact: {user1.email}"
+                mail.send(msg2)
+
+            except Exception as e:
+                print("Email Error:", e)
+
             return jsonify({
                 "message": "🔥 MATCH FOUND!",
                 "similarity": round(similarity * 100, 2)
             })
 
     return jsonify({"message": "Item uploaded successfully"})
+
+# ================= MY ITEMS =================
+@app.route("/my-items/<int:user_id>")
+def my_items(user_id):
+    items = Item.query.filter_by(user_id=user_id).all()
+    result = []
+    for item in items:
+        result.append({
+            "id": item.id,
+            "title": item.title,
+            "description": item.description,
+            "status": item.status,
+            "matched": item.matched,
+            "image_url": request.host_url + "uploads/" + item.image_filename
+        })
+    return jsonify(result)
+
+# ================= DELETE ITEM =================
+@app.route("/delete/<int:item_id>", methods=["DELETE"])
+def delete_item(item_id):
+    item = db.session.get(Item, item_id)
+    if not item:
+        return jsonify({"error": "Item not found"}), 404
+
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({"message": "Deleted successfully"})
+
+# ================= DELETE ACCOUNT =================
+@app.route("/delete-account/<int:user_id>", methods=["DELETE"])
+def delete_account(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    Item.query.filter_by(user_id=user_id).delete()
+    db.session.delete(user)
+    db.session.commit()
+
+    return jsonify({"message": "Account deleted successfully"})
+
+# ================= SERVE IMAGE =================
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+# ================= START =================
+with app.app_context():
+    db.create_all()
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(app, host="0.0.0.0", port=port)
