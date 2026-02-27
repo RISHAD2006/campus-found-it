@@ -3,8 +3,6 @@
 <head>
     <title>Campus Found-It AI</title>
     <meta charset="UTF-8">
-
-    <!-- SocketIO -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
     <style>
@@ -32,15 +30,14 @@
             cursor: pointer;
         }
 
-        .container {
-            padding: 30px;
-        }
+        .container { padding: 30px; }
 
         .card-box {
             background: white;
             padding: 25px;
             border-radius: 15px;
             margin-bottom: 30px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.05);
         }
 
         input, textarea, select {
@@ -72,6 +69,7 @@
             background: white;
             border-radius: 15px;
             padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
         }
 
         .item-card img {
@@ -116,9 +114,11 @@
             border-radius: 8px;
             font-weight: bold;
             display: none;
+            z-index: 1000;
         }
     </style>
 </head>
+
 <body>
 
 <div class="navbar">
@@ -156,7 +156,6 @@
 
 <script>
 
-// ✅ NO API_URL needed (same server)
 const user_id = localStorage.getItem("user_id");
 const name = localStorage.getItem("name");
 const email = localStorage.getItem("email");
@@ -168,12 +167,13 @@ if (!user_id) {
 document.getElementById("userInfo").innerText =
     name + " (" + email + ")";
 
+/* LOGOUT FIX */
 function logout() {
     localStorage.clear();
-    window.location.href = "/login";
+    window.location.href = "/"; 
 }
 
-/* ✅ SOCKET */
+/* SOCKET AUTO CONNECT */
 const socket = io();
 
 socket.on("match_found", function(data){
@@ -185,10 +185,11 @@ socket.on("match_found", function(data){
     }
 });
 
+/* UPLOAD WITH ERROR SAFE */
 async function uploadItem() {
 
-    const title = document.getElementById("title").value;
-    const description = document.getElementById("description").value;
+    const title = document.getElementById("title").value.trim();
+    const description = document.getElementById("description").value.trim();
     const status = document.getElementById("status").value;
     const image = document.getElementById("image").files[0];
 
@@ -204,57 +205,67 @@ async function uploadItem() {
     formData.append("user_id", user_id);
     formData.append("image", image);
 
-    const res = await fetch(`/upload`, {
-        method: "POST",
-        body: formData
-    });
+    try {
+        const res = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
 
-    const data = await res.json();
-    alert(data.message);
+        const data = await res.json();
+        alert(data.message || data.error);
 
-    document.getElementById("title").value = "";
-    document.getElementById("description").value = "";
-    document.getElementById("image").value = "";
+        document.getElementById("title").value = "";
+        document.getElementById("description").value = "";
+        document.getElementById("image").value = "";
 
-    loadItems();
+        loadItems();
+
+    } catch (err) {
+        alert("Upload failed");
+        console.error(err);
+    }
 }
 
+/* LOAD ITEMS SAFE */
 async function loadItems() {
-    const res = await fetch(`/my-items/${user_id}`);
-    const items = await res.json();
+    try {
+        const res = await fetch(`/my-items/${user_id}`);
+        const items = await res.json();
 
-    const container = document.getElementById("itemsContainer");
-    container.innerHTML = "";
+        const container = document.getElementById("itemsContainer");
+        container.innerHTML = "";
 
-    items.forEach(item => {
-        container.innerHTML += `
-            <div class="item-card">
-                <img src="${item.image_url}">
-                <h4>${item.title}</h4>
-                <p>${item.description}</p>
+        items.forEach(item => {
+            container.innerHTML += `
+                <div class="item-card">
+                    <img src="${item.image_url}">
+                    <h4>${item.title}</h4>
+                    <p>${item.description}</p>
 
-                <span class="badge ${item.status}">
-                    ${item.status.toUpperCase()}
-                </span>
+                    <span class="badge ${item.status}">
+                        ${item.status.toUpperCase()}
+                    </span>
 
-                ${item.matched ? '<span class="badge matched">AI MATCHED</span>' : ''}
+                    ${item.matched ? '<span class="badge matched">AI MATCHED</span>' : ''}
 
-                <button class="delete-btn"
-                    onclick="deleteItem(${item.id})">
-                    Delete
-                </button>
-            </div>
-        `;
-    });
+                    <button class="delete-btn"
+                        onclick="deleteItem(${item.id})">
+                        Delete
+                    </button>
+                </div>
+            `;
+        });
+
+    } catch (err) {
+        console.error("Load error:", err);
+    }
 }
 
+/* DELETE SAFE */
 async function deleteItem(id) {
     if (!confirm("Delete this item?")) return;
 
-    await fetch(`/delete/${id}`, {
-        method: "DELETE"
-    });
-
+    await fetch(`/delete/${id}`, { method: "DELETE" });
     loadItems();
 }
 
