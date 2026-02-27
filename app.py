@@ -82,7 +82,7 @@ def calculate_image_similarity(img1_path, img2_path):
 # ================= HOME =================
 @app.route("/")
 def home():
-    return "AI Matching System Running 🚀"
+    return send_from_directory(".", "index.html")
 
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
@@ -259,3 +259,4 @@ with app.app_context():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host="0.0.0.0", port=port)
+
