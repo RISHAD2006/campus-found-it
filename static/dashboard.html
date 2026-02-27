@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Campus Found-It AI</title>
+    <meta charset="UTF-8">
+
+    <!-- 🔥 SocketIO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg,#eef2f3,#dfe9f3);
+        }
+
+        .navbar {
+            background: linear-gradient(90deg,#141e30,#243b55);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar button {
+            background: #e74c3c;
+            border: none;
+            padding: 8px 15px;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .container {
+            padding: 30px;
+        }
+
+        .card-box {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+        }
+
+        button.primary {
+            background: #3498db;
+            border: none;
+            padding: 12px;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+        }
+
+        .items {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 20px;
+        }
+
+        .item-card {
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+        }
+
+        .item-card img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 10px;
+        }
+
+        .badge {
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 20px;
+            color: white;
+            display: inline-block;
+            margin-top: 6px;
+            margin-right: 5px;
+        }
+
+        .lost { background: #e74c3c; }
+        .found { background: #2ecc71; }
+        .matched { background: #8e44ad; }
+
+        .delete-btn {
+            margin-top: 10px;
+            background: #c0392b;
+            border: none;
+            padding: 8px;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .live-popup {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #8e44ad;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <div>
+        <h2>Campus Found-It AI 🤖</h2>
+        <small id="userInfo"></small>
+    </div>
+    <button onclick="logout()">Logout</button>
+</div>
+
+<div class="live-popup" id="livePopup">
+    🔥 MATCH FOUND!
+</div>
+
+<div class="container">
+
+    <div class="card-box">
+        <h3>Upload Item</h3>
+        <input type="text" id="title" placeholder="Item Title">
+        <textarea id="description" placeholder="Item Description"></textarea>
+        <select id="status">
+            <option value="lost">Lost</option>
+            <option value="found">Found</option>
+        </select>
+        <input type="file" id="image">
+        <button class="primary" onclick="uploadItem()">Upload Item</button>
+    </div>
+
+    <div class="card-box">
+        <h3>My Items</h3>
+        <div class="items" id="itemsContainer"></div>
+    </div>
+
+</div>
+
+<script>
+
+const API_URL = "https://web-production-61e8c.up.railway.app";
+
+const user_id = localStorage.getItem("user_id");
+const name = localStorage.getItem("name");
+const email = localStorage.getItem("email");
+
+if (!user_id) {
+    window.location.href = "login.html";
+}
+
+document.getElementById("userInfo").innerText =
+    name + " (" + email + ")";
+
+function logout() {
+    localStorage.clear();
+    window.location.href = "login.html";
+}
+
+/* 🔥 SOCKET */
+const socket = io(API_URL);
+
+socket.on("match_found", function(data){
+    if(data.user1 == parseInt(user_id) || data.user2 == parseInt(user_id)){
+        const popup = document.getElementById("livePopup");
+        popup.style.display = "block";
+        setTimeout(()=> popup.style.display = "none", 4000);
+        loadItems();
+    }
+});
+
+async function uploadItem() {
+
+    const title = document.getElementById("title").value;
+    const description = document.getElementById("description").value;
+    const status = document.getElementById("status").value;
+    const image = document.getElementById("image").files[0];
+
+    if (!title || !description || !image) {
+        alert("Please fill all fields");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("description", description);
+    formData.append("status", status);
+    formData.append("user_id", user_id);
+    formData.append("image", image);
+
+    const res = await fetch(`${API_URL}/upload`, {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await res.json();
+    alert(data.message);
+    loadItems();
+}
+
+async function loadItems() {
+    const res = await fetch(`${API_URL}/my-items/${user_id}`);
+    const items = await res.json();
+
+    const container = document.getElementById("itemsContainer");
+    container.innerHTML = "";
+
+    items.forEach(item => {
+        container.innerHTML += `
+            <div class="item-card">
+                <img src="${item.image_url}">
+                <h4>${item.title}</h4>
+                <p>${item.description}</p>
+
+                <span class="badge ${item.status}">
+                    ${item.status.toUpperCase()}
+                </span>
+
+                ${item.matched ? '<span class="badge matched">AI MATCHED</span>' : ''}
+
+                <button class="delete-btn"
+                    onclick="deleteItem(${item.id})">
+                    Delete
+                </button>
+            </div>
+        `;
+    });
+}
+
+async function deleteItem(id) {
+    if (!confirm("Delete this item?")) return;
+
+    await fetch(`${API_URL}/delete/${id}`, {
+        method: "DELETE"
+    });
+
+    loadItems();
+}
+
+loadItems();
+
+</script>
+
+</body>
+</html>
