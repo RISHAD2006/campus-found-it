@@ -1,7 +1,6 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from flask_socketio import SocketIO
 from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -13,18 +12,12 @@ import uuid
 app = Flask(__name__)
 CORS(app)
 
-# ✅ REMOVE eventlet (IMPORTANT FOR RENDER)
-socketio = SocketIO(app, cors_allowed_origins="*")
-
 # ================= DATABASE =================
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    "DATABASE_URL",
-    "sqlite:///campus.db"
-)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# ================= MAIL CONFIG (SENDGRID SMTP) =================
+# ================= MAIL CONFIG =================
 app.config['MAIL_SERVER'] = 'smtp.sendgrid.net'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
@@ -36,10 +29,8 @@ mail = Mail(app)
 
 # ================= UPLOAD =================
 UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
 
 # ================= MODELS =================
 class User(db.Model):
@@ -47,7 +38,6 @@ class User(db.Model):
     name = db.Column(db.String(100))
     email = db.Column(db.String(100), unique=True)
     password = db.Column(db.String(200))
-
 
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -75,7 +65,6 @@ def calculate_image_similarity(img1_path, img2_path):
     score, _ = ssim(gray1, gray2, full=True)
     return score
 
-# ================= HOME =================
 @app.route("/")
 def home():
     return "AI Matching System Running 🚀"
@@ -118,7 +107,7 @@ def login():
         "email": user.email
     })
 
-# ================= UPLOAD + MATCH + EMAIL =================
+# ================= UPLOAD + MATCH =================
 @app.route("/upload", methods=["POST"])
 def upload_item():
     title = request.form.get("title")
@@ -160,47 +149,9 @@ def upload_item():
             item.matched = True
             db.session.commit()
 
-            user1 = db.session.get(User, user_id)
-            user2 = db.session.get(User, item.user_id)
-
-            try:
-                msg1 = Message(
-                    subject="🔥 Lost Item Matched!",
-                    recipients=[user1.email]
-                )
-                msg1.body = f"""
-Your item '{new_item.title}' has been matched.
-
-Contact: {user2.email}
-"""
-                mail.send(msg1)
-
-                msg2 = Message(
-                    subject="🔥 Found Item Matched!",
-                    recipients=[user2.email]
-                )
-                msg2.body = f"""
-Your item '{item.title}' has been matched.
-
-Contact: {user1.email}
-"""
-                mail.send(msg2)
-
-                print("✅ Emails sent successfully")
-
-            except Exception as e:
-                print("❌ Email Error:", e)
-
             return jsonify({
                 "message": "🔥 MATCH FOUND!",
                 "similarity": round(similarity * 100, 2)
             })
 
     return jsonify({"message": "Item uploaded successfully"})
-
-# ================= START =================
-with app.app_context():
-    db.create_all()
-
-if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=10000)
