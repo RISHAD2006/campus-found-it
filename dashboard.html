@@ -21,7 +21,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
 
         .navbar button {
@@ -42,7 +41,6 @@
             padding: 25px;
             border-radius: 15px;
             margin-bottom: 30px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
         }
 
         input, textarea, select {
@@ -74,12 +72,6 @@
             background: white;
             border-radius: 15px;
             padding: 15px;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-            transition: 0.3s;
-        }
-
-        .item-card:hover {
-            transform: translateY(-5px);
         }
 
         .item-card img {
@@ -114,16 +106,6 @@
             width: 100%;
         }
 
-        .success-box {
-            background: #2ecc71;
-            color: white;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: none;
-        }
-
-        /* 🔥 LIVE POPUP */
         .live-popup {
             position: fixed;
             top: 20px;
@@ -134,7 +116,6 @@
             border-radius: 8px;
             font-weight: bold;
             display: none;
-            box-shadow: 0 0 15px rgba(0,0,0,0.3);
         }
     </style>
 </head>
@@ -153,8 +134,6 @@
 </div>
 
 <div class="container">
-
-    <div id="notification" class="success-box"></div>
 
     <div class="card-box">
         <h3>Upload Item</h3>
@@ -177,45 +156,32 @@
 
 <script>
 
-const API_URL = "https://campus-found-it.onrender.com";
-const user_id = localStorage.getItem("user_id");
+const API_URL = "https://web-production-61e8c.up.railway.app";
 
+const user_id = localStorage.getItem("user_id");
 const name = localStorage.getItem("name");
 const email = localStorage.getItem("email");
-
-document.getElementById("userInfo").innerText =
-    name + " (" + email + ")";
 
 if (!user_id) {
     window.location.href = "login.html";
 }
+
+document.getElementById("userInfo").innerText =
+    name + " (" + email + ")";
 
 function logout() {
     localStorage.clear();
     window.location.href = "login.html";
 }
 
-function showNotification(message) {
-    const box = document.getElementById("notification");
-    box.innerText = message;
-    box.style.display = "block";
-    setTimeout(() => box.style.display = "none", 4000);
-}
-
-/* 🔥 SOCKET CONNECTION */
+/* 🔥 SOCKET */
 const socket = io(API_URL);
 
 socket.on("match_found", function(data){
-
     if(data.user1 == parseInt(user_id) || data.user2 == parseInt(user_id)){
-
         const popup = document.getElementById("livePopup");
         popup.style.display = "block";
-
-        setTimeout(()=>{
-            popup.style.display = "none";
-        }, 4000);
-
+        setTimeout(()=> popup.style.display = "none", 4000);
         loadItems();
     }
 });
@@ -245,9 +211,7 @@ async function uploadItem() {
     });
 
     const data = await res.json();
-
-    showNotification(data.message);
-
+    alert(data.message);
     loadItems();
 }
 
@@ -287,7 +251,6 @@ async function deleteItem(id) {
         method: "DELETE"
     });
 
-    showNotification("Item deleted successfully");
     loadItems();
 }
 
@@ -296,5 +259,4 @@ loadItems();
 </script>
 
 </body>
-
 </html>
