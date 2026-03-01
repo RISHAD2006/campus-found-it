@@ -13,7 +13,7 @@ import uuid
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # ================= DATABASE =================
 database_url = os.environ.get("DATABASE_URL")
@@ -90,54 +90,62 @@ def dashboard_page():
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
 def register():
-    data = request.get_json()
+    try:
+        data = request.get_json()
 
-    if not data:
-        return jsonify({"message": "Invalid data"}), 400
+        if not data:
+            return jsonify({"message": "Invalid data"}), 400
 
-    name = data.get("name")
-    email = data.get("email")
-    password = data.get("password")
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
 
-    if not name or not email or not password:
-        return jsonify({"message": "All fields required"}), 400
+        if not name or not email or not password:
+            return jsonify({"message": "All fields required"}), 400
 
-    if User.query.filter_by(email=email).first():
-        return jsonify({"message": "Email already exists"}), 400
+        if User.query.filter_by(email=email).first():
+            return jsonify({"message": "Email already exists"}), 400
 
-    hashed_password = generate_password_hash(password)
+        hashed_password = generate_password_hash(password)
 
-    new_user = User(name=name, email=email, password=hashed_password)
-    db.session.add(new_user)
-    db.session.commit()
+        new_user = User(name=name, email=email, password=hashed_password)
+        db.session.add(new_user)
+        db.session.commit()
 
-    return jsonify({"message": "Registered successfully"})
+        return jsonify({"message": "Registered successfully"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ================= LOGIN =================
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.get_json()
+    try:
+        data = request.get_json()
 
-    if not data:
-        return jsonify({"message": "Invalid data"}), 400
+        if not data:
+            return jsonify({"message": "Invalid data"}), 400
 
-    email = data.get("email")
-    password = data.get("password")
+        email = data.get("email")
+        password = data.get("password")
 
-    user = User.query.filter_by(email=email).first()
+        user = User.query.filter_by(email=email).first()
 
-    if not user:
-        return jsonify({"message": "User not found"}), 404
+        if not user:
+            return jsonify({"message": "User not found"}), 404
 
-    if not check_password_hash(user.password, password):
-        return jsonify({"message": "Incorrect password"}), 401
+        if not check_password_hash(user.password, password):
+            return jsonify({"message": "Incorrect password"}), 401
 
-    return jsonify({
-        "message": "Login successful",
-        "user_id": user.id,
-        "name": user.name,
-        "email": user.email
-    })
+        return jsonify({
+            "message": "Login successful",
+            "user_id": user.id,
+            "name": user.name,
+            "email": user.email
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ================= GET USER ITEMS =================
 @app.route("/my-items/<int:user_id>")
@@ -160,83 +168,91 @@ def my_items(user_id):
 # ================= UPLOAD =================
 @app.route("/upload", methods=["POST"])
 def upload():
-    title = request.form.get("title")
-    description = request.form.get("description")
-    status = request.form.get("status")
-    user_id = request.form.get("user_id")
-    image = request.files.get("image")
-
-    if not title or not description or not status or not user_id:
-        return jsonify({"message": "All fields required"}), 400
-
-    if not image:
-        return jsonify({"message": "Image required"}), 400
-
     try:
+        title = request.form.get("title")
+        description = request.form.get("description")
+        status = request.form.get("status")
+        user_id = request.form.get("user_id")
+        image = request.files.get("image")
+
+        if not title or not description or not status or not user_id:
+            return jsonify({"message": "All fields required"}), 400
+
+        if not image:
+            return jsonify({"message": "Image required"}), 400
+
         user_id = int(user_id)
-    except:
-        return jsonify({"message": "Invalid user ID"}), 400
 
-    filename = str(uuid.uuid4()) + "_" + secure_filename(image.filename)
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    image.save(filepath)
+        filename = str(uuid.uuid4()) + "_" + secure_filename(image.filename)
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        image.save(filepath)
 
-    new_item = Item(
-        title=title,
-        description=description,
-        status=status,
-        user_id=user_id,
-        image_filename=filename
-    )
+        new_item = Item(
+            title=title,
+            description=description,
+            status=status,
+            user_id=user_id,
+            image_filename=filename
+        )
 
-    db.session.add(new_item)
-    db.session.commit()
+        db.session.add(new_item)
+        db.session.commit()
 
-    # ===== MATCHING =====
-    opposite = "found" if status == "lost" else "lost"
-    items = Item.query.filter_by(status=opposite, matched=False).all()
+        opposite = "found" if status == "lost" else "lost"
+        items = Item.query.filter_by(status=opposite, matched=False).all()
 
-    for item in items:
-        if item.user_id == user_id:
-            continue
+        for item in items:
+            if item.user_id == user_id:
+                continue
 
-        other_path = os.path.join(app.config["UPLOAD_FOLDER"], item.image_filename)
-        similarity = calculate_image_similarity(filepath, other_path)
+            other_path = os.path.join(app.config["UPLOAD_FOLDER"], item.image_filename)
+            similarity = calculate_image_similarity(filepath, other_path)
 
-        if similarity >= 0.85:
-            new_item.matched = True
-            item.matched = True
-            db.session.commit()
+            if similarity >= 0.85:
+                new_item.matched = True
+                item.matched = True
+                db.session.commit()
 
-            socketio.emit("match_found", {
-                "user1": user_id,
-                "user2": item.user_id
-            })
+                socketio.emit("match_found", {
+                    "user1": user_id,
+                    "user2": item.user_id
+                })
 
-            return jsonify({
-                "message": "🔥 MATCH FOUND!",
-                "similarity": round(similarity * 100, 2)
-            })
+                return jsonify({
+                    "message": "🔥 MATCH FOUND!",
+                    "similarity": round(similarity * 100, 2)
+                })
 
-    return jsonify({"message": "Item uploaded successfully"})
+        return jsonify({"message": "Item uploaded successfully"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ================= DELETE =================
 @app.route("/delete/<int:item_id>", methods=["DELETE"])
 def delete_item(item_id):
-    item = db.session.get(Item, item_id)
+    try:
+        item = db.session.get(Item, item_id)
 
-    if not item:
-        return jsonify({"message": "Item not found"}), 404
+        if not item:
+            return jsonify({"message": "Item not found"}), 404
 
-    db.session.delete(item)
-    db.session.commit()
+        db.session.delete(item)
+        db.session.commit()
 
-    return jsonify({"message": "Deleted successfully"})
+        return jsonify({"message": "Deleted successfully"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ================= SERVE UPLOADS =================
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+# ================= CREATE TABLES =================
+with app.app_context():
+    db.create_all()
 
 # ================= MAIN =================
 if __name__ == "__main__":
