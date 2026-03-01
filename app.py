@@ -13,14 +13,13 @@ import uuid
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# SocketIO (Render safe mode)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ================= DATABASE =================
 database_url = os.environ.get("DATABASE_URL")
 
 if not database_url:
-    raise RuntimeError("DATABASE_URL environment variable not set!")
+    raise RuntimeError("DATABASE_URL not set!")
 
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
@@ -30,7 +29,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-# ================= UPLOAD =================
+# ================= UPLOAD CONFIG =================
 UPLOAD_FOLDER = "uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -49,7 +48,7 @@ class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200))
     description = db.Column(db.String(500))
-    status = db.Column(db.String(20))
+    status = db.Column(db.String(20))  # lost / found
     user_id = db.Column(db.Integer)
     image_filename = db.Column(db.String(300))
     matched = db.Column(db.Boolean, default=False)
@@ -108,16 +107,11 @@ def register():
 
     hashed_password = generate_password_hash(password)
 
-    new_user = User(
-        name=name,
-        email=email,
-        password=hashed_password
-    )
-
+    new_user = User(name=name, email=email, password=hashed_password)
     db.session.add(new_user)
     db.session.commit()
 
-    return jsonify({"message": "Registered successfully"}), 200
+    return jsonify({"message": "Registered successfully"})
 
 # ================= LOGIN =================
 @app.route("/login", methods=["POST"])
@@ -145,7 +139,7 @@ def login():
         "email": user.email
     })
 
-# ================= GET MY ITEMS =================
+# ================= GET USER ITEMS =================
 @app.route("/my-items/<int:user_id>")
 def my_items(user_id):
     items = Item.query.filter_by(user_id=user_id).all()
@@ -198,7 +192,7 @@ def upload():
     db.session.add(new_item)
     db.session.commit()
 
-    # AI MATCH
+    # ===== MATCHING =====
     opposite = "found" if status == "lost" else "lost"
     items = Item.query.filter_by(status=opposite, matched=False).all()
 
@@ -207,7 +201,6 @@ def upload():
             continue
 
         other_path = os.path.join(app.config["UPLOAD_FOLDER"], item.image_filename)
-
         similarity = calculate_image_similarity(filepath, other_path)
 
         if similarity >= 0.85:
@@ -245,10 +238,7 @@ def delete_item(item_id):
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
-# ================= START =================
-with app.app_context():
-    db.create_all()
-
+# ================= MAIN =================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     socketio.run(app, host="0.0.0.0", port=port)
