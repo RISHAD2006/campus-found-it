@@ -22,9 +22,7 @@
             text-align: center;
         }
 
-        h2 {
-            margin-bottom: 20px;
-        }
+        h2 { margin-bottom: 20px; }
 
         input {
             width: 100%;
@@ -46,9 +44,7 @@
             margin-top: 10px;
         }
 
-        button:hover {
-            background: #0f2027;
-        }
+        button:hover { background: #0f2027; }
 
         .link-btn {
             background: none;
@@ -83,7 +79,6 @@
 </div>
 
 <script>
-const API_URL = "https://web-production-61e8c.up.railway.app";
 
 function goRegister() {
     window.location.href = "register.html";
@@ -99,7 +94,7 @@ async function login() {
     }
 
     try {
-        const res = await fetch(`${API_URL}/login`, {
+        const res = await fetch(`/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password })
@@ -122,6 +117,7 @@ async function login() {
         document.getElementById("message").innerText = "Server error. Try again.";
     }
 }
+
 </script>
 
 </body>
