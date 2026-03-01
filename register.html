@@ -22,9 +22,7 @@
             text-align: center;
         }
 
-        h2 {
-            margin-bottom: 20px;
-        }
+        h2 { margin-bottom: 20px; }
 
         input {
             width: 100%;
@@ -46,9 +44,7 @@
             margin-top: 10px;
         }
 
-        button:hover {
-            background: #1e3c72;
-        }
+        button:hover { background: #1e3c72; }
 
         .link-btn {
             background: none;
@@ -84,7 +80,6 @@
 </div>
 
 <script>
-const API_URL = "https://web-production-61e8c.up.railway.app";
 
 function goLogin() {
     window.location.href = "login.html";
@@ -101,27 +96,33 @@ async function register() {
     }
 
     try {
-        const res = await fetch(`${API_URL}/register`, {
+        const res = await fetch(`/register`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name, email, password })
         });
 
         const data = await res.json();
-        document.getElementById("message").innerText = data.message || data.error;
 
-        if (res.ok) {
-            document.getElementById("message").style.color = "green";
-            document.getElementById("message").innerText = "Registration successful! Redirecting...";
-            setTimeout(() => {
-                window.location.href = "login.html";
-            }, 1000);
+        if (!res.ok) {
+            document.getElementById("message").innerText = data.message;
+            return;
         }
 
+        document.getElementById("message").style.color = "green";
+        document.getElementById("message").innerText =
+            "Registration successful! Redirecting...";
+
+        setTimeout(() => {
+            window.location.href = "login.html";
+        }, 1000);
+
     } catch (error) {
-        document.getElementById("message").innerText = "Server error. Try again.";
+        document.getElementById("message").innerText =
+            "Server error. Try again.";
     }
 }
+
 </script>
 
 </body>
