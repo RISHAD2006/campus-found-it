@@ -4,7 +4,7 @@
     <title>Campus Found-It AI</title>
     <meta charset="UTF-8">
 
-    <!-- 🔥 SocketIO -->
+    <!-- SocketIO -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
     <style>
@@ -32,9 +32,7 @@
             cursor: pointer;
         }
 
-        .container {
-            padding: 30px;
-        }
+        .container { padding: 30px; }
 
         .card-box {
             background: white;
@@ -156,8 +154,7 @@
 
 <script>
 
-const API_URL = "https://web-production-61e8c.up.railway.app";
-
+/* ✅ SAME DOMAIN API */
 const user_id = localStorage.getItem("user_id");
 const name = localStorage.getItem("name");
 const email = localStorage.getItem("email");
@@ -174,8 +171,8 @@ function logout() {
     window.location.href = "login.html";
 }
 
-/* 🔥 SOCKET */
-const socket = io(API_URL);
+/* ✅ Socket connect same domain */
+const socket = io();
 
 socket.on("match_found", function(data){
     if(data.user1 == parseInt(user_id) || data.user2 == parseInt(user_id)){
@@ -205,7 +202,7 @@ async function uploadItem() {
     formData.append("user_id", user_id);
     formData.append("image", image);
 
-    const res = await fetch(`${API_URL}/upload`, {
+    const res = await fetch(`/upload`, {
         method: "POST",
         body: formData
     });
@@ -216,7 +213,7 @@ async function uploadItem() {
 }
 
 async function loadItems() {
-    const res = await fetch(`${API_URL}/my-items/${user_id}`);
+    const res = await fetch(`/my-items/${user_id}`);
     const items = await res.json();
 
     const container = document.getElementById("itemsContainer");
@@ -247,7 +244,7 @@ async function loadItems() {
 async function deleteItem(id) {
     if (!confirm("Delete this item?")) return;
 
-    await fetch(`${API_URL}/delete/${id}`, {
+    await fetch(`/delete/${id}`, {
         method: "DELETE"
     });
 
